@@ -2,11 +2,13 @@ workloads:
   strata:
     replicaCount: 1
 
-image: patrichugi/strata-olares:1.0.0
+image: patrichugi/strata-olares:1.0.1
 
 strata:
   family: qwen
   model: IQ3_XXS
   context: "262144"
-  vision: "no"
+  vision: "yes"
+  # Host names Strata answers to (DNS rebinding protection): the Olares entrance names of this app
+  allowedHosts: "77194479.patrichugi.olares.com,77194479.patrichugi.olares.local"
   kv: int8
