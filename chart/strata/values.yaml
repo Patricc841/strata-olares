@@ -1,0 +1,12 @@
+workloads:
+  strata:
+    replicaCount: 1
+
+image: patrichugi/strata-olares:1.0.0
+
+strata:
+  family: qwen
+  model: IQ3_XXS
+  context: "262144"
+  vision: "no"
+  kv: int8

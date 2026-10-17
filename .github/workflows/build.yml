@@ -11,7 +11,7 @@ on:
         default: "120"
       tag:
         description: image tag
-        default: latest
+        default: "1.0.1"
 
 jobs:
   build:
@@ -27,6 +27,13 @@ jobs:
           repository: niko1221/strata
           ref: ${{ inputs.strata_ref }}
           submodules: recursive
+
+      # The Dockerfile builds ggml's CPU backend for the CPU that builds the image (-march=native). A GitHub runner
+      # is not the Olares One's Core Ultra 9 275HX (no AVX-512), so the engine died with SIGILL. Portable = AVX2 floor.
+      - name: Build the engine portable (AVX2 baseline)
+        run: |
+          sed -i 's|"-DSTRATA_ENABLE_CUDA=ON",|"-DSTRATA_ENABLE_CUDA=ON", "-DSTRATA_PORTABLE=ON",|; s|"-DSTRATA_PORTABLE=OFF"|"-DSTRATA_PORTABLE=ON"|' Dockerfile
+          grep -n "STRATA_PORTABLE" Dockerfile
 
       - uses: docker/setup-buildx-action@v3
 

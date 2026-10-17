@@ -1,0 +1,46 @@
+olaresManifest.version: '0.12.0'
+olaresManifest.type: app
+apiVersion: v3
+metadata:
+  name: strata
+  appid: strata
+  title: Strata
+  description: Qwen3.8-Flash-Next inference engine with OpenAI and Anthropic compatible API
+  icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
+  version: 0.0.1
+  categories:
+  - Utilities
+entrances:
+- name: strata
+  host: strata
+  port: 8080
+  title: Strata
+  authLevel: private
+  invisible: false
+spec:
+  versionName: "0.1.45"
+  runAsUser: false
+  supportArch:
+  - amd64
+  accelerator:
+  - mode: nvidia
+    supportMultiCard: false
+    supportMultiNodes: false
+    requiredCpu: "2"
+    limitedCpu: "12"
+    requiredMemory: 56Gi
+    limitedMemory: 84Gi
+    requiredDisk: 100Gi
+    limitedDisk: 120Gi
+    requiredGPUMemory: 20Gi
+    limitedGPUMemory: 24Gi
+permission:
+  appCache: true
+options:
+  apiTimeout: 0
+  dependencies:
+  - name: olares
+    version: '>=1.12.6-0'
+    type: system
+workloadReplicas:
+  strata: 1
