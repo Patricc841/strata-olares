@@ -7,7 +7,7 @@ metadata:
   title: Strata
   description: Qwen3.8-Flash-Next inference engine with OpenAI and Anthropic compatible API
   icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
-  version: 0.0.3
+  version: 0.0.5
   categories:
   - Utilities
 entrances:
@@ -17,8 +17,15 @@ entrances:
   title: Strata
   authLevel: private
   invisible: false
+- name: strata-api
+  host: strata
+  port: 8080
+  title: Strata API
+  authLevel: internal
+  invisible: true
 spec:
   versionName: "0.1.45"
+  onlyAdmin: true
   runAsUser: false
   supportArch:
   - amd64
@@ -37,6 +44,7 @@ spec:
 permission:
   appCache: true
 options:
+  shared: true
   apiTimeout: 0
   dependencies:
   - name: olares

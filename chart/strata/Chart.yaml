@@ -2,5 +2,5 @@ apiVersion: v2
 name: strata
 description: Strata - Qwen3.8-Flash-Next inference engine (OpenAI/Anthropic compatible API)
 type: application
-version: 0.0.3
+version: 0.0.5
 appVersion: "0.1.45"

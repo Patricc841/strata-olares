@@ -10,5 +10,5 @@ strata:
   context: "262144"
   vision: "yes"
   # Host names Strata answers to (DNS rebinding protection): the Olares entrance names of this app
-  allowedHosts: "77194479.patrichugi.olares.com,77194479.patrichugi.olares.local"
+  allowedHosts: ".patrichugi.olares.com,.patrichugi.olares.local,strata.strata-shared,strata.strata-shared.svc.cluster.local"
   kv: int8
