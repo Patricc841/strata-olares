@@ -1,0 +1,134 @@
+{{- $oe := .Values.olaresEnv | default dict -}}
+{{- $runStateHostPath := printf "%s/llm-init-run/%s" .Values.userspace.appCache .Release.Name -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strata
+  namespace: '{{ .Release.Namespace }}'
+  labels:
+    io.kompose.service: strata
+spec:
+  replicas: {{ .Values.workloads.strata.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      io.kompose.service: strata
+  template:
+    metadata:
+      labels:
+        io.kompose.service: strata
+        # llm-init follows the engine Pod onto its node (run-state is a node-local hostPath)
+        app.kubernetes.io/instance: '{{ .Release.Name }}'
+      annotations:
+        checksum/wrappers: {{ include (print $.Template.BasePath "/wrappers.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      # the engine releases its page-locked RAM on SIGTERM; docker's default 10 s kills it (exit 137)
+      terminationGracePeriodSeconds: 90
+      containers:
+      - name: strata
+        image: {{ .Values.images.strata | quote }}
+        imagePullPolicy: IfNotPresent
+        # bash job control gives the supervisor a process group even without a tty
+        command: [/bin/bash, /llm-init/wrappers/strata.sh]
+        ports:
+        - containerPort: 8080
+        env:
+        - name: WRAPPER_COMMON
+          value: /run/llm-init/wrappers/common.sh
+        # the first start waits for llm-init to download ~76 GB
+        - name: WAIT_TIMEOUT
+          value: "86400"
+        - name: WRAPPER_COMMON_WAIT
+          value: "86400"
+        - name: FAMILY
+          value: "{{ .Values.strata.family }}"
+        - name: MODEL
+          value: "{{ .Values.strata.model }}"
+        - name: VISION
+          value: "{{ .Values.strata.vision }}"
+        - name: STRATA_ALLOWED_HOSTS
+          value: "{{ .Values.strata.allowedHosts }}"
+        - name: ENGINE_ARGS
+          value: {{ $oe.ENGINE_ARGS | default "--context 262144 --kv int8" | quote }}
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8080"
+{{- if $oe.HF_ENDPOINT }}
+        - name: HF_ENDPOINT
+          value: {{ $oe.HF_ENDPOINT | quote }}
+{{- end }}
+{{- if $oe.HF_TOKEN }}
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: HF_TOKEN
+{{- end }}
+        # Olares waits for the startup probe before it completes the installation. The wrapper may run while
+        # llm-init is still downloading, so this only checks that the wrapper is alive; readiness waits for the model.
+        startupProbe:
+          exec:
+            command: [/bin/bash, -ec, 'kill -0 1; test -r /llm-init/wrappers/strata.sh']
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 8640
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # no liveness probe: a Model Console relaunch may legitimately take minutes
+        resources:
+          requests:
+            cpu: "2"
+            memory: 56Gi
+          limits:
+            cpu: "12"
+            memory: 84Gi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: hf-cache
+          mountPath: /cache/hf/hub
+          readOnly: true
+        - name: run-state
+          mountPath: /run/llm-init
+          readOnly: true
+        - name: wrappers
+          mountPath: /llm-init/wrappers
+          readOnly: true
+      volumes:
+      - name: data
+        hostPath:
+          path: {{ .Values.userspace.appCache }}/strata
+          type: DirectoryOrCreate
+      - name: hf-cache
+        hostPath:
+          path: {{ .Values.userspace.appCommon }}/huggingface
+          type: DirectoryOrCreate
+      - name: run-state
+        hostPath:
+          path: {{ $runStateHostPath | quote }}
+          type: DirectoryOrCreate
+      - name: wrappers
+        configMap:
+          name: llm-init-wrappers
+          defaultMode: 0555
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: strata
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  selector:
+    io.kompose.service: strata
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080

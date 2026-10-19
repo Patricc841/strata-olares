@@ -1,0 +1,81 @@
+# Wrapper scripts for the engine container. They are mounted at /llm-init/wrappers.
+# strata.sh waits for llm-init's download hand-off and supervises the engine (Model Console can relaunch it);
+# start-strata.sh turns the downloaded files into a GGUF folder for the image's own entrypoint.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-init-wrappers
+  namespace: {{ .Release.Namespace }}
+data:
+  strata.sh: |
+    #!/bin/sh
+    set -eu
+
+    ENGINE=strata
+    WRAPPER_COMMON=${WRAPPER_COMMON:-"$(dirname "$0")/common.sh"}
+    _wc=0
+    while [ ! -f "$WRAPPER_COMMON" ] && [ "$_wc" -lt "${WRAPPER_COMMON_WAIT:-3600}" ]; do
+        printf '[wrapper] waiting for %s (elapsed=%ss)\n' "$WRAPPER_COMMON" "$_wc"
+        sleep 5
+        _wc=$((_wc + 5))
+    done
+    [ -f "$WRAPPER_COMMON" ] || { printf '[wrapper] %s never appeared\n' "$WRAPPER_COMMON" >&2; exit 1; }
+    unset _wc
+    . "$WRAPPER_COMMON"
+
+    wait_for_sentinel
+    wait_for_engine_args_handoff
+    MODEL_PATH=$(read_model_path)
+    export MODEL_PATH
+
+    run_strata() {
+        load_engine_args_from_handoff
+        export ENGINE_ARGS
+        exec /bin/sh /llm-init/wrappers/start-strata.sh
+    }
+
+    supervise_engine run_strata "$@"
+  start-strata.sh: |
+    #!/bin/sh
+    # MODEL_PATH is the first downloaded shard (.../snapshots/<rev>/IQ3_XXS/<file>.gguf); the image encoder
+    # (mmproj) sits one level up in the same snapshot.
+    set -eu
+
+    src=$(dirname "$MODEL_PATH")
+    root=$(dirname "$src")
+    link=/data/gguf-hf
+    mkdir -p "$link"
+    # The shared Hugging Face cache is read-only here: link the files into a folder on the data volume, where
+    # setup.py can put its finish marks beside them.
+    find "$link" -maxdepth 1 -type l -delete
+    for f in "$src"/*.gguf "$root"/mmproj-*.gguf; do
+        [ -e "$f" ] || continue
+        ln -sfn "$(readlink -f "$f")" "$link/$(basename "$f")"
+    done
+
+    # Only --context and --kv of ENGINE_ARGS reach the engine (the image's entrypoint takes them as CONTEXT / KV).
+    ctx=262144
+    kv=int8
+    set -- ${ENGINE_ARGS:-}
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --context=*) ctx=${1#*=}; shift ;;
+            --kv=*) kv=${1#*=}; shift ;;
+            --context) [ "$#" -ge 2 ] || break; ctx=$2; shift 2 ;;
+            --kv) [ "$#" -ge 2 ] || break; kv=$2; shift 2 ;;
+            *) printf '[strata] ignoring ENGINE_ARGS option %s (only --context and --kv are supported)\n' "$1"; shift ;;
+        esac
+    done
+
+    # The entrypoint sets the model up once and then reuses the saved config. Set it up again whenever what
+    # the config records changes: the folder with the files, the context, the KV type or vision.
+    state="${FAMILY}|${MODEL}|${ctx}|${kv}|${VISION}|$(readlink -f "$link/$(ls "$link" | grep -m1 -e '-00001-of-')" 2>/dev/null || echo none)"
+    if [ "$(cat /data/.strata-chart-state 2>/dev/null || true)" != "$state" ]; then
+        printf '[strata] settings or model files changed: setting the model up again\n'
+        export REINSTALL=1
+        printf '%s' "$state" > /data/.strata-chart-state
+    fi
+
+    export CONTEXT="$ctx" KV="$kv" GGUF_DIR="$link"
+    cd /opt/strata
+    exec ./docker-entrypoint.sh

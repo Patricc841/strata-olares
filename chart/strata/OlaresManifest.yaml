@@ -7,10 +7,20 @@ metadata:
   title: Strata
   description: Qwen3.8-Flash-Next inference engine with OpenAI and Anthropic compatible API
   icon: https://app.cdn.olares.com/appstore/default/defaulticon.webp
-  version: 0.0.5
+  version: 0.1.0
   categories:
   - Utilities
+# Published to Router through llm-init (model card: capabilities, context, reasoning_effort)
+sharedEntrances:
+- name: strata
+  host: sharedentrances-api
+  port: 0
+  title: Strata
+  invisible: true
+  authLevel: internal
 entrances:
+# The order matters: the entrance host name is <appid><index>, and the first two keep their old names
+# so the manually added Router provider (http://<appid>1.<zone>/v1) keeps working during the switch.
 - name: strata
   host: strata
   port: 8080
@@ -23,6 +33,12 @@ entrances:
   title: Strata API
   authLevel: internal
   invisible: true
+- name: strataclient
+  host: download-svc
+  port: 8090
+  title: Strata Model Console
+  openMethod: window
+  authLevel: internal
 spec:
   versionName: "0.1.45"
   onlyAdmin: true
@@ -33,22 +49,93 @@ spec:
   - mode: nvidia
     supportMultiCard: false
     supportMultiNodes: false
-    requiredCpu: "2"
-    limitedCpu: "12"
-    requiredMemory: 56Gi
-    limitedMemory: 84Gi
+    requiredCpu: 2200m
+    limitedCpu: "13"
+    requiredMemory: 57Gi
+    limitedMemory: 86Gi
     requiredDisk: 100Gi
-    limitedDisk: 120Gi
+    limitedDisk: 200Gi
     requiredGPUMemory: 20Gi
     limitedGPUMemory: 24Gi
 permission:
   appCache: true
+  appCommon: true
 options:
   shared: true
   apiTimeout: 0
+  LLMGatewaySupported: true
   dependencies:
   - name: olares
-    version: '>=1.12.6-0'
+    version: '>=1.12.7-0'
     type: system
 workloadReplicas:
   strata: 1
+  llminit: 1
+envs:
+# Three pinned sources of one snapshot of ISTA-DASLab's GSQ-RCO repo: the two IQ3_XXS shards and the image encoder.
+# The first one is the "main" source; the others finish before llm-init hands over to the engine.
+- envName: MODEL_SOURCE
+  required: true
+  type: string
+  editable: false
+  applyOnChange: false
+  default: hf://ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF --revision ed59f92082b1e93c0e96d60a8b11aab089b52f09 --include IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf,hf://ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF --revision ed59f92082b1e93c0e96d60a8b11aab089b52f09 --include IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf,hf://ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF --revision ed59f92082b1e93c0e96d60a8b11aab089b52f09 --include mmproj-Qwen3.8-Flash-Next-BF16.gguf
+  description: Pinned single-file sources of one HF snapshot (IQ3_XXS shards plus the image encoder).
+- envName: MODEL_NAME
+  required: true
+  type: string
+  editable: false
+  applyOnChange: false
+  default: qwen3.8-flash-next-iq3_xxs
+- envName: MODEL_MODE
+  required: true
+  type: string
+  editable: false
+  applyOnChange: false
+  default: chat
+- envName: MODEL_SUPPORTS
+  required: true
+  type: string
+  editable: false
+  applyOnChange: false
+  default: vision,thinking,tools
+# Strata's template knows low, medium and xhigh ("high" means xhigh) and none; the default is xhigh
+- envName: MODEL_REASONING_EFFORT
+  required: false
+  type: string
+  editable: false
+  applyOnChange: false
+  default: "low,medium,xhigh"
+  description: The reasoning_effort levels this model accepts, published on the model card.
+- envName: MODEL_REASONING_EFFORT_DEFAULT
+  required: false
+  type: string
+  editable: false
+  applyOnChange: false
+  default: "xhigh"
+  description: The level this model uses when a request does not ask for one.
+# Only --context and --kv are applied to the engine by this chart (see wrappers.yaml); llm-init derives the card's
+# context size from --context.
+- envName: ENGINE_ARGS
+  required: true
+  type: string
+  editable: true
+  applyOnChange: true
+  default: --context 262144 --kv int8
+  description: "Strata setup options. Supported here: --context and --kv. Saving in Model Console relaunches the engine."
+- envName: LOG_LEVEL
+  required: true
+  type: string
+  editable: true
+  applyOnChange: true
+  default: info
+- envName: HF_ENDPOINT
+  required: false
+  applyOnChange: true
+  valueFrom:
+    envName: OLARES_SYSTEM_HUGGINGFACE_SERVICE
+- envName: HF_TOKEN
+  required: false
+  applyOnChange: true
+  valueFrom:
+    envName: OLARES_SYSTEM_HUGGINGFACE_TOKEN

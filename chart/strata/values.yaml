@@ -1,14 +1,15 @@
+images:
+  strata: patrichugi/strata-olares:1.0.1
+  llmInit: docker.io/beclab/llm-init:v1.7.24
 workloads:
+  llminit:
+    replicaCount: 1
   strata:
     replicaCount: 1
-
-image: patrichugi/strata-olares:1.0.1
-
 strata:
   family: qwen
   model: IQ3_XXS
-  context: "262144"
   vision: "yes"
-  # Host names Strata answers to (DNS rebinding protection): the Olares entrance names of this app
-  allowedHosts: ".patrichugi.olares.com,.patrichugi.olares.local,strata.strata-shared,strata.strata-shared.svc.cluster.local"
-  kv: int8
+  # Host names Strata answers to (DNS rebinding protection): the service name llm-init proxies to,
+  # plus the Olares entrance names of this app
+  allowedHosts: "strata,strata.strata-shared,strata.strata-shared.svc.cluster.local,.patrichugi.olares.com,.patrichugi.olares.local"
